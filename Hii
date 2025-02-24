@@ -1,0 +1,46 @@
+import telebot import time import threading import os from pytube import YouTube
+
+Telegram Bot Token
+
+TOKEN = "YOUR_BOT_TOKEN" CHANNEL_USERNAME = "@YourChannel" EXPIRY_TIME = 1800  # 30 मिनट तक बॉट एक्टिव रहेगा WAIT_TIME = 60  # 1 मिनट में बॉट खुद एक्टिव होगा MAX_FILE_SIZE_MB = 50  # अधिकतम फ़ाइल साइज़
+
+bot = telebot.TeleBot(TOKEN) user_sessions = {}
+
+📌 स्टार्ट कमांड
+
+@bot.message_handler(commands=['start']) def send_start_message(message): chat_id = message.chat.id bot.send_message(chat_id, f"🔹 पहले इस चैनल को जॉइन करें: {CHANNEL_USERNAME}") user_sessions[chat_id] = {'active': False, 'start_time': time.time()} threading.Thread(target=activate_after_wait, args=(chat_id,)).start()
+
+🔄 1 मिनट बाद बॉट ऑटो-एक्टिवेट करने का फंक्शन
+
+def activate_after_wait(chat_id): time.sleep(WAIT_TIME) if chat_id in user_sessions and not user_sessions[chat_id]['active']: user_sessions[chat_id]['active'] = True bot.send_message(chat_id, "✅ बॉट सक्रिय हो गया! अब आप वीडियो लिंक भेज सकते हैं।") threading.Thread(target=expire_session, args=(chat_id,)).start()
+
+⏳ 30 मिनट बाद बॉट रीसेट करने का फंक्शन
+
+def expire_session(chat_id): time.sleep(EXPIRY_TIME) if chat_id in user_sessions: del user_sessions[chat_id] bot.send_message(chat_id, "⏳ आपका सेशन समाप्त हो गया। फिर से सक्रिय करने के लिए /start दबाएँ।")
+
+📥 जब यूजर वीडियो लिंक भेजे
+
+@bot.message_handler(func=lambda message: True) def handle_links(message): chat_id = message.chat.id if chat_id in user_sessions and user_sessions[chat_id]['active']: if any(domain in message.text.lower() for domain in ['instagram.com', 'facebook.com', 'terabox.com', 'youtube.com']): bot.send_message(chat_id, "🔍 वीडियो लिंक प्राप्त की जा रही है...") try: yt = YouTube(message.text) stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first() if not stream: bot.send_message(chat_id, "❌ कोई डाउनलोड करने योग्य वीडियो नहीं मिला।") return
+
+file_size_mb = stream.filesize / (1024 * 1024)
+            if file_size_mb > MAX_FILE_SIZE_MB:
+                bot.send_message(
+                    chat_id,
+                    f"🎥 यह वीडियो {round(file_size_mb, 2)}MB का है, जो 50MB से अधिक है।\n"
+                    "🔹 [Watch Video](https://t.me/share/url?url=" + message.text + ")",
+                    parse_mode='Markdown'
+                )
+            else:
+                video_file = stream.download()
+                with open(video_file, "rb") as video:
+                    bot.send_video(chat_id, video)
+                os.remove(video_file)
+        except Exception as e:
+            bot.send_message(chat_id, f"❌ वीडियो लिंक में समस्या है: {e}")
+    else:
+        bot.send_message(chat_id, "❌ कृपया केवल Instagram, Facebook, YouTube या Terabox की लिंक भेजें।")
+else:
+    bot.send_message(chat_id, "⚠️ पहले बॉट को सक्रिय करें! /start दबाएँ।")
+
+if name == "main": bot.polling(none_stop=True)
+
